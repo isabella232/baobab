@@ -78,6 +78,7 @@ namespace Baobab {
         private Gtk.Spinner spinner;
         private Location? active_location;
         private ulong scan_completed_handler;
+        private Gtk.TreeModelFilter filter;
 
         static Gdk.Cursor busy_cursor;
 
@@ -306,12 +307,15 @@ namespace Baobab {
 
         void on_chart_item_activated (Chart chart, Gtk.TreeIter iter) {
             var path = active_location.scanner.get_path (iter);
+            var filter_path = filter.convert_child_path_to_path (path);
+            reroot_treeview (filter_path);
 
-            if (!treeview.is_row_expanded (path)) {
-                treeview.expand_to_path (path);
-            }
+            //if (!treeview.is_row_expanded (path)) {
+            //treeview.collapse_all ();
+                //treeview.expand_to_path (path);
+            //}
 
-            treeview.set_cursor (path, null, false);
+            //treeview.set_cursor (path, null, false);
         }
 
         void on_drag_data_received (Gtk.Widget widget, Gdk.DragContext context, int x, int y,
@@ -427,7 +431,7 @@ namespace Baobab {
                 }
             });
 
-            var selection = treeview.get_selection ();
+            /*var selection = treeview.get_selection ();
             selection.changed.connect (() => {
                 Gtk.TreeIter iter;
                 if (selection.get_selected (null, out iter)) {
@@ -435,7 +439,36 @@ namespace Baobab {
                     rings_chart.root = path;
                     treemap_chart.root = path;
                 }
+            });*/
+
+            treeview.row_activated.connect ((path, column) => {
+                reroot_treeview (path);
             });
+        }
+
+        void reroot_treeview (Gtk.TreePath activated_path) {
+            if (activated_path.get_depth () == 1) {
+                activated_path.up ();
+            }
+
+            var child_model_path = filter.convert_path_to_child_path (activated_path);
+            var virtual_root_path = child_model_path;
+
+            rings_chart.root = virtual_root_path;
+            treemap_chart.root = virtual_root_path;
+
+            child_model_path.up();
+            if (child_model_path.get_depth () == 0) {
+                child_model_path = null;
+            }
+
+            filter = new Gtk.TreeModelFilter (active_location.scanner, child_model_path);
+            filter.set_visible_func ((model, iter) => {
+                var path = model.get_path (iter);
+                return path.is_descendant (virtual_root_path) || path.compare (virtual_root_path) == 0;
+            });
+            treeview.model = filter;
+            expand_first_row ();
         }
 
         void message (string primary_msg, string secondary_msg, Gtk.MessageType type) {
@@ -585,7 +618,8 @@ namespace Baobab {
 
             scanner.scan (force);
 
-            treeview.model = scanner;
+            filter = new Gtk.TreeModelFilter (scanner, null);
+            treeview.model = filter;
             expand_first_row ();
         }
 
